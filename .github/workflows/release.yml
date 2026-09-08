@@ -1,9 +1,12 @@
 name: Release
 
 on:
+  # Cut a release by pushing a tag matching the version in manifest.json,
+  # or by running this workflow from the Actions tab, which creates the tag.
   push:
     tags:
       - "*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -28,21 +31,29 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Check tag matches manifest version
+      - name: Resolve version
+        id: version
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-          if [ "$TAG" != "$MANIFEST_VERSION" ]; then
-            echo "Tag '$TAG' does not match manifest.json version '$MANIFEST_VERSION'." >&2
-            echo "BRAT matches releases by version, so these must be identical." >&2
+          VERSION=$(node -p "require('./manifest.json').version")
+          # BRAT matches a release to a plugin by version, so a tag that
+          # disagrees with the manifest would publish an uninstallable release.
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$VERSION" ]; then
+            echo "Tag '$GITHUB_REF_NAME' does not match manifest.json version '$VERSION'." >&2
             exit 1
           fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Create release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "${GITHUB_REF#refs/tags/}" \
-            --title "${GITHUB_REF#refs/tags/}" \
-            --generate-notes \
-            main.js manifest.json styles.css
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$VERSION" \
+              --target "$GITHUB_SHA" \
+              --title "$VERSION" \
+              --generate-notes \
+              main.js manifest.json styles.css
+          fi
