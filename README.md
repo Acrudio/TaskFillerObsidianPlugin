@@ -1,6 +1,6 @@
 # Task Filler
 
-An [Obsidian](https://obsidian.md) plugin for quickly inserting and filling in task items in your notes. Works on both desktop and mobile.
+An [Obsidian](https://obsidian.md) plugin that splits a multi-day task into one dated subtask per day, dividing its time estimate between them. Built around the frontmatter the Project Manager and Tasknotes plugins use, and works on both desktop and mobile.
 
 ## Installation with BRAT
 
@@ -15,16 +15,37 @@ BRAT will keep the plugin up to date as new releases are published. These steps 
 
 > BRAT installs from GitHub **releases**, so the plugin only becomes installable once a release exists. See [Cutting a release](#cutting-a-release) below.
 
-## Usage
+## What it does
 
-| Command | What it does |
-| --- | --- |
-| **Insert task** | Converts the current line into a task, or starts a new task line below an existing one. |
-| **Toggle task on current line** | Flips the checkbox between done and not done. |
+Run **Split task into daily subtasks** while a task note is open. The plugin reads the task's `start` and `due` dates, works out how many days the task spans, and creates one subtask note per day.
 
-There is also a ribbon icon for **Insert task**. Both commands are available from the command palette, and can be bound to hotkeys or added to the mobile toolbar.
+Given a parent task with `start: 2026-09-07`, `due: 2026-09-09` and `timeEstimate: 180`, it creates:
 
-Settings (**Settings → Task Filler**) let you change the character used inside the checkbox and optionally append a date stamp using a [Moment.js](https://momentjs.com/docs/#/displaying/format/) format string.
+| Note | `start` / `due` | `timeEstimate` |
+| --- | --- | --- |
+| 🔨 Manufacturing HW 1 (Day 1/3) | 2026-09-07 | 60 |
+| 🔨 Manufacturing HW 1 (Day 2/3) | 2026-09-08 | 60 |
+| 🔨 Manufacturing HW 1 (Day 3/3) | 2026-09-09 | 60 |
+
+Each subtask is a full Project Manager task note — `pm-task: true`, an id in Project Manager's own format, the parent's `projectId` and `parentId`, and the parent's `Project:` link — so it shows up in Project Manager and Tasknotes like any other task. The parent's `subtaskIds` and its `## Subtasks` checklist are updated to point at the new notes.
+
+The time estimate is divided evenly across the days. When it does not divide exactly, the remainder goes to the earliest days so the parts still add up to the parent's total: 100 minutes over three days becomes 34 / 33 / 33.
+
+Notes are named with Project Manager's lowercase-hyphenated convention, in the same folder as the parent unless you configure another. Because `/` cannot appear in a file name, `(Day 1/3)` becomes `(day-1-3)` in the file name while the title keeps the slash.
+
+Running the command twice is safe: days whose note already exists are skipped rather than duplicated, so extending a task's `due` date and re-running only fills in the new days.
+
+## Settings
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Title template | `{{title}} (Day {{day}}/{{total}})` | Title of each subtask. Also supports `{{date}}`. |
+| Folder | *(empty)* | Where subtasks are created. Empty means beside the parent note. |
+| Status | `notStarted` | Status written to each new subtask. |
+| Set a start date | on | Give each subtask a `start` equal to its `due`, so it spans one day. |
+| Inherit tags | on | Copy the parent's tags onto each subtask. |
+| Maximum subtasks | 60 | Refuse to split a longer span, as a guard against a mistyped date. |
+| Start date / Due date / Time estimate | `start` / `due` / `timeEstimate` | Which frontmatter properties to read. Change these if you use Tasknotes' `scheduled`, or any other naming. |
 
 ## Development
 
@@ -33,8 +54,11 @@ Requires Node.js 18 or newer.
 ```bash
 npm install
 npm run dev     # rebuild on change, with inline sourcemaps
+npm test        # unit tests for the date, splitting and note-writing logic
 npm run build   # typecheck + minified production bundle
 ```
+
+The date arithmetic, time-estimate splitting, title and file naming, and note rendering live in `src/core/` as pure functions with no Obsidian imports, so they can be tested with `node --test`. `src/main.ts` holds the vault glue.
 
 The build bundles `src/main.ts` into `main.js` at the repository root. `main.js` is not committed — it is generated and attached to each release.
 
