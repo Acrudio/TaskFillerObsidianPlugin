@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Build output (published as release assets, not committed)
+main.js
+*.js.map
+
+# Obsidian test vault leftovers
+data.json
+.obsidian/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db

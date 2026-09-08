@@ -1,0 +1,10 @@
+{
+	"id": "task-filler",
+	"name": "Task Filler",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "Quickly insert and fill in task items in your notes.",
+	"author": "Acrudio",
+	"authorUrl": "https://github.com/Acrudio",
+	"isDesktopOnly": false
+}
