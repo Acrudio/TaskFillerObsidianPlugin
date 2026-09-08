@@ -33,7 +33,15 @@ The time estimate is divided evenly across the days. When it does not divide exa
 
 Notes are named with Project Manager's lowercase-hyphenated convention, in the same folder as the parent unless you configure another. Because `/` cannot appear in a file name, `(Day 1/3)` becomes `(day-1-3)` in the file name while the title keeps the slash.
 
-Running the command twice is safe: days whose note already exists are skipped rather than duplicated, so extending a task's `due` date and re-running only fills in the new days.
+### Re-running the command
+
+Running the command again rebuilds the day subtasks from the task's current dates, so changing `start`, `due` or `timeEstimate` and re-running gives you a correct set rather than a duplicated one. The previous run's subtasks are moved to trash — Obsidian's trash, following your **Files and links → Deleted files** setting — and replaced.
+
+**A subtask that has subtasks of its own is never deleted.** That is the guard against losing real work: once you have broken a day down further, or attached anything below it, that note is left alone and reported as kept. A day whose note is protected this way is not recreated, so the existing note keeps its place.
+
+Subtasks are found through both the parent's `subtaskIds` and the links in its `## Subtasks` section, since the two can drift apart. Anything linked from elsewhere in the note is not touched, and neither is a mention of a deleted subtask in another section.
+
+By default you are asked to confirm, with the notes to be removed listed. Turn **Confirm before replacing** off in settings once you trust it.
 
 ## Settings
 
@@ -42,6 +50,7 @@ Running the command twice is safe: days whose note already exists are skipped ra
 | Title template | `{{title}} (Day {{day}}/{{total}})` | Title of each subtask. Also supports `{{date}}`. |
 | Folder | *(empty)* | Where subtasks are created. Empty means beside the parent note. |
 | Status | `notStarted` | Status written to each new subtask. |
+| Confirm before replacing | on | Ask before moving a previous run's subtasks to trash. |
 | Set a start date | on | Give each subtask a `start` equal to its `due`, so it spans one day. |
 | Inherit tags | on | Copy the parent's tags onto each subtask. |
 | Maximum subtasks | 60 | Refuse to split a longer span, as a guard against a mistyped date. |

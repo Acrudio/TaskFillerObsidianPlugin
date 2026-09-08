@@ -1,6 +1,6 @@
 {
 	"name": "task-filler",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Split a task that spans several days into one dated subtask per day, dividing its time estimate between them.",
 	"main": "main.js",
 	"private": true,

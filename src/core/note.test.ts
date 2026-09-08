@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	appendSubtaskLinks,
+	listSubtaskLinkTargets,
+	removeSubtaskLinks,
 	renderSubtaskNote,
 	stripFrontmatter,
+	subtaskLinkTarget,
 	subtaskListItem,
 	yamlScalar,
 	type SubtaskNote,
@@ -133,4 +136,79 @@ test("leaves the note alone when there is nothing to add", () => {
 test("strips frontmatter without eating the body", () => {
 	assert.equal(stripFrontmatter(PARENT), PARENT.split("---\n")[2]);
 	assert.equal(stripFrontmatter("no frontmatter\n"), "no frontmatter\n");
+});
+
+const WITH_DAYS = `---
+id: 2pjorumkmtq10aie
+---
+
+Project: [[Homework|Homework]]
+
+## Subtasks
+- [x] [[hw-(day-1-3)|HW (Day 1/3)]]
+- [ ] [[hw-(day-2-3)|HW (Day 2/3)]]
+- [ ] [[hw-research|HW research]]
+
+## Notes
+See [[hw-(day-1-3)]] for the measurements.
+`;
+
+test("lists the notes linked from the Subtasks section", () => {
+	assert.deepEqual(listSubtaskLinkTargets(WITH_DAYS), [
+		"hw-(day-1-3)",
+		"hw-(day-2-3)",
+		"hw-research",
+	]);
+});
+
+test("ignores links outside the Subtasks section", () => {
+	assert.deepEqual(listSubtaskLinkTargets("Project: [[Homework]]\n\n## Notes\n- [ ] [[a|A]]\n"), []);
+});
+
+test("removes only the checklist entries it is given", () => {
+	const updated = removeSubtaskLinks(WITH_DAYS, new Set(["hw-(day-1-3)", "hw-(day-2-3)"]));
+
+	assert.equal(
+		updated,
+		`---
+id: 2pjorumkmtq10aie
+---
+
+Project: [[Homework|Homework]]
+
+## Subtasks
+- [ ] [[hw-research|HW research]]
+
+## Notes
+See [[hw-(day-1-3)]] for the measurements.
+`
+	);
+});
+
+test("a removed subtask keeps its mentions in other sections", () => {
+	const updated = removeSubtaskLinks(WITH_DAYS, new Set(["hw-(day-1-3)"]));
+	assert.match(updated, /## Notes\nSee \[\[hw-\(day-1-3\)\]\] for the measurements\./);
+});
+
+test("removing every entry leaves an empty section to refill", () => {
+	const updated = removeSubtaskLinks(
+		WITH_DAYS,
+		new Set(["hw-(day-1-3)", "hw-(day-2-3)", "hw-research"])
+	);
+	assert.match(updated, /## Subtasks\n\n## Notes/);
+	assert.match(appendSubtaskLinks(updated, ["- [ ] [[new|New]]"]), /## Subtasks\n- \[ \] \[\[new\|New\]\]\n\n## Notes/);
+});
+
+test("removal is a no-op when nothing matches", () => {
+	assert.equal(removeSubtaskLinks(WITH_DAYS, new Set()), WITH_DAYS);
+	assert.equal(removeSubtaskLinks(WITH_DAYS, new Set(["not-here"])), WITH_DAYS);
+	assert.equal(removeSubtaskLinks("no section\n", new Set(["a"])), "no section\n");
+});
+
+test("reads link targets whatever the checkbox state or bullet", () => {
+	assert.equal(subtaskLinkTarget("- [x] [[a|A]]"), "a");
+	assert.equal(subtaskLinkTarget("* [ ] [[folder/a]]"), "folder/a");
+	assert.equal(subtaskLinkTarget("  + [/] [[a|A]]  "), "a");
+	assert.equal(subtaskLinkTarget("- [ ] plain text"), null);
+	assert.equal(subtaskLinkTarget("Project: [[Homework]]"), null);
 });

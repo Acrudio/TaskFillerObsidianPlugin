@@ -18,6 +18,8 @@ export interface TaskFillerSettings {
 	inheritTags: boolean;
 	/** Status written to new subtasks. */
 	subtaskStatus: string;
+	/** Ask before moving a previous run's subtasks to trash. */
+	confirmBeforeReplacing: boolean;
 	/** Refuse to split spans longer than this, as a guard against typos in dates. */
 	maxSubtasks: number;
 }
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: TaskFillerSettings = {
 	setStartOnSubtasks: true,
 	inheritTags: true,
 	subtaskStatus: "notStarted",
+	confirmBeforeReplacing: true,
 	maxSubtasks: 60,
 };
 
@@ -83,6 +86,18 @@ export class TaskFillerSettingTab extends PluginSettingTab {
 		);
 
 		this.text("Status", "Status written to each new subtask.", "subtaskStatus", "notStarted");
+
+		new Setting(this.containerEl)
+			.setName("Confirm before replacing")
+			.setDesc(
+				"Ask before moving a previous run's subtasks to trash. Subtasks that have subtasks of their own are never touched."
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.confirmBeforeReplacing).onChange(async (value) => {
+					this.plugin.settings.confirmBeforeReplacing = value;
+					await this.plugin.saveSettings();
+				})
+			);
 
 		new Setting(this.containerEl)
 			.setName("Set a start date")

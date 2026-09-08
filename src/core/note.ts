@@ -79,6 +79,41 @@ export function subtaskListItem(slug: string, title: string): string {
 
 const HEADING = /^#{1,6}\s/;
 const SUBTASKS_HEADING = /^#{1,6}\s+subtasks\s*$/i;
+const CHECKLIST_LINK = /^\s*[-*+]\s+\[.\]\s+\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/;
+
+interface Section {
+	/** Index of the `## Subtasks` line itself. */
+	heading: number;
+	/** Index one past the section's last line. */
+	end: number;
+}
+
+function findSubtasksSection(lines: string[]): Section | null {
+	const heading = lines.findIndex((line) => SUBTASKS_HEADING.test(line));
+	if (heading === -1) return null;
+
+	let end = heading + 1;
+	while (end < lines.length && !HEADING.test(lines[end])) end++;
+	return { heading, end };
+}
+
+/** The link target of a subtask checklist entry, or null for any other line. */
+export function subtaskLinkTarget(line: string): string | null {
+	const match = CHECKLIST_LINK.exec(line);
+	return match ? match[1].trim() : null;
+}
+
+/** Every note linked from the `## Subtasks` section, in the order they appear. */
+export function listSubtaskLinkTargets(content: string): string[] {
+	const lines = content.split("\n");
+	const section = findSubtasksSection(lines);
+	if (!section) return [];
+
+	return lines
+		.slice(section.heading + 1, section.end)
+		.map(subtaskLinkTarget)
+		.filter((target): target is string => target !== null);
+}
 
 /**
  * Add checklist entries to the parent's `## Subtasks` section, creating the
@@ -89,22 +124,41 @@ export function appendSubtaskLinks(content: string, items: string[]): string {
 	if (items.length === 0) return content;
 
 	const lines = content.split("\n");
-	const headingIndex = lines.findIndex((line) => SUBTASKS_HEADING.test(line));
+	const section = findSubtasksSection(lines);
 
-	if (headingIndex === -1) {
+	if (!section) {
 		const trimmed = content.replace(/\s+$/, "");
 		const prefix = trimmed === "" ? "" : `${trimmed}\n\n`;
 		return `${prefix}## Subtasks\n${items.join("\n")}\n`;
 	}
 
-	// Find where the section ends, then back up over its trailing blank lines so
-	// the new entries join the existing list rather than following a gap.
-	let end = headingIndex + 1;
-	while (end < lines.length && !HEADING.test(lines[end])) end++;
-	while (end > headingIndex + 1 && lines[end - 1].trim() === "") end--;
+	// Back up over the section's trailing blank lines so the new entries join
+	// the existing list rather than following a gap.
+	let end = section.end;
+	while (end > section.heading + 1 && lines[end - 1].trim() === "") end--;
 
 	lines.splice(end, 0, ...items);
 	return lines.join("\n");
+}
+
+/** Drop the checklist entries in the `## Subtasks` section that link to `targets`. */
+export function removeSubtaskLinks(content: string, targets: Set<string>): string {
+	if (targets.size === 0) return content;
+
+	const lines = content.split("\n");
+	const section = findSubtasksSection(lines);
+	if (!section) return content;
+
+	const kept = lines.slice(section.heading + 1, section.end).filter((line) => {
+		const target = subtaskLinkTarget(line);
+		return target === null || !targets.has(target);
+	});
+
+	return [
+		...lines.slice(0, section.heading + 1),
+		...kept,
+		...lines.slice(section.end),
+	].join("\n");
 }
 
 const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
