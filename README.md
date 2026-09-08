@@ -80,14 +80,16 @@ To test on mobile without publishing a release, copy `main.js`, `manifest.json` 
 
 ### Cutting a release
 
-Version numbers live in `manifest.json`, `versions.json` and `package.json`, and must all match the git tag.
+Version numbers live in `manifest.json`, `versions.json` and `package.json`, and must all agree. Bump them together:
 
 ```bash
 npm version patch   # or minor / major — also updates manifest.json + versions.json
-git push origin claude/epic-dijkstra-hhjroj --follow-tags
+git push origin main --follow-tags
 ```
 
-Pushing the tag triggers `.github/workflows/release.yml`, which builds the plugin and creates a GitHub release with `main.js`, `manifest.json` and `styles.css` attached — exactly the assets BRAT downloads. Tags carry no `v` prefix, matching the version string in `manifest.json`.
+Pushing the tag runs `.github/workflows/release.yml`, which tests, builds, and publishes a GitHub release with `main.js`, `manifest.json` and `styles.css` attached — exactly the assets BRAT downloads. Tags carry no `v` prefix, matching the version string in `manifest.json`.
+
+The same workflow can be run by hand from the repository's **Actions → Release → Run workflow**, which takes the version from `manifest.json` and creates the tag itself. That is the way to publish from a phone, or from anywhere without push access to tags. Re-running it for a version that already has a release re-uploads the assets rather than failing, so a botched build can be replaced in place.
 
 ## License
 
