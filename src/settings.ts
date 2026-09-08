@@ -16,8 +16,14 @@ export interface TaskFillerSettings {
 	setStartOnSubtasks: boolean;
 	/** Copy the parent's tags onto each subtask. */
 	inheritTags: boolean;
-	/** Status written to new subtasks. */
-	subtaskStatus: string;
+	/** Status for a task with no subtask completed yet, and for new subtasks. */
+	notStartedStatus: string;
+	/** Status for a task with some, but not all, subtasks completed. */
+	inProgressStatus: string;
+	/** Status for a task whose subtasks are all completed. */
+	completedStatus: string;
+	/** Keep a parent's progress and status in step with its subtasks automatically. */
+	syncParentProgress: boolean;
 	/** Ask before moving a previous run's subtasks to trash. */
 	confirmBeforeReplacing: boolean;
 	/** Refuse to split spans longer than this, as a guard against typos in dates. */
@@ -32,7 +38,10 @@ export const DEFAULT_SETTINGS: TaskFillerSettings = {
 	subtaskFolder: "",
 	setStartOnSubtasks: true,
 	inheritTags: true,
-	subtaskStatus: "notStarted",
+	notStartedStatus: "notStarted",
+	inProgressStatus: "inProgress",
+	completedStatus: "completed",
+	syncParentProgress: true,
 	confirmBeforeReplacing: true,
 	maxSubtasks: 60,
 };
@@ -48,7 +57,15 @@ export class TaskFillerSettingTab extends PluginSettingTab {
 	private text(
 		name: string,
 		desc: string,
-		key: "startProperty" | "dueProperty" | "timeEstimateProperty" | "titleTemplate" | "subtaskFolder" | "subtaskStatus",
+		key:
+			| "startProperty"
+			| "dueProperty"
+			| "timeEstimateProperty"
+			| "titleTemplate"
+			| "subtaskFolder"
+			| "notStartedStatus"
+			| "inProgressStatus"
+			| "completedStatus",
 		placeholder: string
 	): void {
 		new Setting(this.containerEl)
@@ -84,8 +101,6 @@ export class TaskFillerSettingTab extends PluginSettingTab {
 			"subtaskFolder",
 			"Same folder as the parent"
 		);
-
-		this.text("Status", "Status written to each new subtask.", "subtaskStatus", "notStarted");
 
 		new Setting(this.containerEl)
 			.setName("Confirm before replacing")
@@ -135,6 +150,39 @@ export class TaskFillerSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		new Setting(this.containerEl).setName("Progress").setHeading();
+
+		new Setting(this.containerEl)
+			.setName("Track subtask completion")
+			.setDesc(
+				"Keep a task's progress and status in step with its subtasks: the percentage completed, and the status values below."
+			)
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.syncParentProgress).onChange(async (value) => {
+					this.plugin.settings.syncParentProgress = value;
+					await this.plugin.saveSettings();
+				})
+			);
+
+		this.text(
+			"Not started",
+			"Status for a task with no subtask completed yet. Also the status given to new subtasks.",
+			"notStartedStatus",
+			DEFAULT_SETTINGS.notStartedStatus
+		);
+		this.text(
+			"In progress",
+			"Status for a task with some, but not all, of its subtasks completed.",
+			"inProgressStatus",
+			DEFAULT_SETTINGS.inProgressStatus
+		);
+		this.text(
+			"Completed",
+			"Status for a task whose subtasks are all completed. A subtask counts as completed when its own status property holds this value.",
+			"completedStatus",
+			DEFAULT_SETTINGS.completedStatus
+		);
 
 		new Setting(this.containerEl).setName("Frontmatter properties").setHeading();
 

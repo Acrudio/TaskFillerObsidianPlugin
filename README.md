@@ -43,14 +43,33 @@ Subtasks are found through both the parent's `subtaskIds` and the links in its `
 
 By default you are asked to confirm, with the notes to be removed listed. Turn **Confirm before replacing** off in settings once you trust it.
 
+### Progress and status
+
+Once a task has subtasks, Task Filler keeps its `progress` and `status` in step with them, updating the parent as you complete each day:
+
+| Subtasks completed | `progress` | `status` |
+| --- | --- | --- |
+| none | 0 | `notStarted` |
+| some | percentage completed | `inProgress` |
+| all | 100 | `completed` |
+
+**A subtask counts as completed when its own `status` property equals the completed status.** That is the authoritative signal, rather than the checkbox in the parent's checklist. If the plugin you complete tasks in writes a different word, set it under **Settings → Task Filler → Completed** and everything follows.
+
+The percentage never rounds to a misleading endpoint: 199 of 200 subtasks reads as 99, not 100, and 1 of 300 reads as 1, not 0. So `progress: 100` always means finished and `progress: 0` always means untouched.
+
+Updates happen automatically, shortly after a subtask changes, and only when the parent's values would actually change. A task with no subtasks is never touched, so tasks you manage by hand keep whatever status you gave them. Nested tasks cascade: completing a subtask updates its parent, which updates that task's own parent in turn.
+
+If a parent ever looks out of date — you deleted a subtask outside the plugin, or you had tracking switched off — run **Refresh progress from subtasks** on it to recount. Turn the whole behaviour off with **Track subtask completion**.
+
 ## Settings
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Title template | `{{title}} (Day {{day}}/{{total}})` | Title of each subtask. Also supports `{{date}}`. |
 | Folder | *(empty)* | Where subtasks are created. Empty means beside the parent note. |
-| Status | `notStarted` | Status written to each new subtask. |
 | Confirm before replacing | on | Ask before moving a previous run's subtasks to trash. |
+| Track subtask completion | on | Keep a parent's `progress` and `status` in step with its subtasks. |
+| Not started / In progress / Completed | `notStarted` / `inProgress` / `completed` | The three status values. "Not started" is also the status given to new subtasks. |
 | Set a start date | on | Give each subtask a `start` equal to its `due`, so it spans one day. |
 | Inherit tags | on | Copy the parent's tags onto each subtask. |
 | Maximum subtasks | 60 | Refuse to split a longer span, as a guard against a mistyped date. |

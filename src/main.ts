@@ -3,10 +3,16 @@ import {
 	Plugin,
 	TFile,
 	TFolder,
+	debounce,
 	normalizePath,
 } from "obsidian";
 import { formatLocalTimestamp, formatPlainDate } from "./core/dates";
 import { buildPlan, type SubtaskPlan } from "./core/plan";
+import {
+	summariseSubtasks,
+	type ParentProgress,
+	type StatusVocabulary,
+} from "./core/progress";
 import {
 	appendSubtaskLinks,
 	listSubtaskLinkTargets,
@@ -23,6 +29,9 @@ import {
 } from "./settings";
 
 const PROJECT_LINE = /^Project:\s/;
+
+/** How long to let subtask edits settle before recounting a parent. */
+const SYNC_DELAY_MS = 800;
 
 /** A note already listed as a subtask of the task being split. */
 interface ExistingSubtask {
@@ -43,18 +52,28 @@ interface TaskIndex {
 export default class TaskFillerPlugin extends Plugin {
 	settings: TaskFillerSettings = DEFAULT_SETTINGS;
 
+	/** Parent ids waiting to be recounted, batched into one pass. */
+	private readonly pendingParents = new Set<string>();
+	/** Parents mid-write, so a recount cannot overlap itself. */
+	private readonly writing = new Set<string>();
+	/** Last seen parent and status per note, to ignore edits that change neither. */
+	private readonly lastSeen = new Map<string, string>();
+	private flushPending: () => void = () => {};
+
 	async onload(): Promise<void> {
 		await this.loadSettings();
 
 		this.addCommand({
 			id: "split-into-daily-subtasks",
 			name: "Split task into daily subtasks",
-			checkCallback: (checking: boolean) => {
-				const file = this.app.workspace.getActiveFile();
-				if (!file || file.extension !== "md") return false;
-				if (!checking) void this.splitTask(file);
-				return true;
-			},
+			checkCallback: (checking: boolean) => this.onActiveTask(checking, (file) => this.splitTask(file)),
+		});
+
+		this.addCommand({
+			id: "refresh-progress",
+			name: "Refresh progress from subtasks",
+			checkCallback: (checking: boolean) =>
+				this.onActiveTask(checking, (file) => this.refreshProgress(file)),
 		});
 
 		this.addRibbonIcon("calendar-range", "Split task into daily subtasks", () => {
@@ -66,7 +85,37 @@ export default class TaskFillerPlugin extends Plugin {
 			void this.splitTask(file);
 		});
 
+		// Recount a parent whenever one of its subtasks is edited. Edits arrive
+		// one keystroke at a time, so batch them rather than rewriting the
+		// parent on each.
+		this.flushPending = debounce(() => void this.syncPendingParents(), SYNC_DELAY_MS, false);
+		this.registerEvent(
+			this.app.metadataCache.on("changed", (file, _data, cache) => {
+				if (!this.settings.syncParentProgress) return;
+
+				const parentId = readString(cache.frontmatter?.parentId);
+				const status = readString(cache.frontmatter?.status) ?? "";
+				const signature = `${parentId ?? ""}\u0000${status}`;
+
+				// Typing in a subtask's body changes neither, and a parent that
+				// would have to be rewritten identically is not worth a scan.
+				if (this.lastSeen.get(file.path) === signature) return;
+				this.lastSeen.set(file.path, signature);
+
+				if (!parentId) return;
+				this.pendingParents.add(parentId);
+				this.flushPending();
+			})
+		);
+
 		this.addSettingTab(new TaskFillerSettingTab(this.app, this));
+	}
+
+	private onActiveTask(checking: boolean, run: (file: TFile) => Promise<unknown>): boolean {
+		const file = this.app.workspace.getActiveFile();
+		if (!file || file.extension !== "md") return false;
+		if (!checking) void run(file);
+		return true;
 	}
 
 	/**
@@ -95,9 +144,9 @@ export default class TaskFillerPlugin extends Plugin {
 		if (folder === null) return;
 
 		const content = await this.app.vault.read(file);
-		const existing = this.collectSubtasks(file, frontmatter, content);
+		const existing = this.collectSubtasks(file, frontmatter, content, this.indexTasks());
 		const replaceable = existing.filter((subtask) => !subtask.hasChildren);
-		const protectedCount = existing.length - replaceable.length;
+		const kept = existing.filter((subtask) => subtask.hasChildren);
 
 		if (replaceable.length > 0 && this.settings.confirmBeforeReplacing) {
 			const confirmed = await confirm(this.app, {
@@ -121,19 +170,25 @@ export default class TaskFillerPlugin extends Plugin {
 		const removedIds = new Set<string>();
 		const removedLinks = new Set<string>();
 		let failed = 0;
+		let replaced = 0;
 
 		for (const subtask of replaceable) {
 			try {
 				await this.app.fileManager.trashFile(subtask.file);
 				if (subtask.id) removedIds.add(subtask.id);
 				for (const target of subtask.linkTargets) removedLinks.add(target);
+				replaced++;
 			} catch (error) {
 				console.error(`Task Filler: could not remove ${subtask.file.path}`, error);
 				failed++;
 			}
 		}
 
+		const body = stripFrontmatter(content)
+			.split("\n")
+			.filter((line) => PROJECT_LINE.test(line));
 		const created: SubtaskPlan[] = [];
+		const createdFiles: TFile[] = [];
 		let blocked = 0;
 
 		for (const subtask of plan.subtasks) {
@@ -145,27 +200,27 @@ export default class TaskFillerPlugin extends Plugin {
 			}
 
 			try {
-				await this.app.vault.create(
-					path,
-					renderSubtaskNote({
-						id: subtask.id,
-						parentId: readString(frontmatter.id),
-						projectId: readString(frontmatter.projectId),
-						title: subtask.title,
-						status: this.settings.subtaskStatus,
-						priority: readString(frontmatter.priority) ?? "medium",
-						start: this.settings.setStartOnSubtasks
-							? formatPlainDate(subtask.date)
-							: null,
-						due: formatPlainDate(subtask.date),
-						tags: this.settings.inheritTags ? readStringList(frontmatter.tags) : [],
-						timeEstimate: subtask.timeEstimate,
-						createdAt: subtask.createdAt,
-						dateModified: formatLocalTimestamp(new Date()),
-						body: stripFrontmatter(content)
-							.split("\n")
-							.filter((line) => PROJECT_LINE.test(line)),
-					})
+				createdFiles.push(
+					await this.app.vault.create(
+						path,
+						renderSubtaskNote({
+							id: subtask.id,
+							parentId: readString(frontmatter.id),
+							projectId: readString(frontmatter.projectId),
+							title: subtask.title,
+							status: this.settings.notStartedStatus,
+							priority: readString(frontmatter.priority) ?? "medium",
+							start: this.settings.setStartOnSubtasks
+								? formatPlainDate(subtask.date)
+								: null,
+							due: formatPlainDate(subtask.date),
+							tags: this.settings.inheritTags ? readStringList(frontmatter.tags) : [],
+							timeEstimate: subtask.timeEstimate,
+							createdAt: subtask.createdAt,
+							dateModified: formatLocalTimestamp(new Date()),
+							body,
+						})
+					)
 				);
 				created.push(subtask);
 			} catch (error) {
@@ -176,14 +231,96 @@ export default class TaskFillerPlugin extends Plugin {
 
 		await this.relinkSubtasks(file, created, removedIds, removedLinks);
 
+		// Count from the notes we know exist rather than waiting for the
+		// metadata cache to catch up with the ones just written.
+		await this.writeProgress(file, [...kept.map((subtask) => subtask.file), ...createdFiles]);
+
 		new Notice(
-			summarize({
-				created: created.length,
-				replaced: removedIds.size + removedLinks.size > 0 ? replaceable.length - failed : 0,
-				kept: protectedCount + blocked,
-				failed,
-			})
+			summarize({ created: created.length, replaced, kept: kept.length + blocked, failed })
 		);
+	}
+
+	/** Recount one task's subtasks on demand, and say what it now reads as. */
+	private async refreshProgress(file: TFile): Promise<void> {
+		const summary = await this.syncProgress(file, this.indexTasks());
+		new Notice(
+			summary
+				? `Task Filler: ${summary.progress}% complete, status "${summary.status}".`
+				: "Task Filler: this note has no subtasks to count."
+		);
+	}
+
+	private async syncPendingParents(): Promise<void> {
+		const ids = [...this.pendingParents];
+		this.pendingParents.clear();
+		if (ids.length === 0) return;
+
+		const index = this.indexTasks();
+		for (const id of ids) {
+			const parent = index.byId.get(id);
+			if (parent) await this.syncProgress(parent, index);
+		}
+	}
+
+	/** Recount a task's subtasks and write the progress and status they imply. */
+	private async syncProgress(file: TFile, index: TaskIndex): Promise<ParentProgress | null> {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+		const content = await this.app.vault.cachedRead(file);
+		const subtasks = this.collectSubtasks(file, frontmatter, content, index);
+		return this.writeProgress(
+			file,
+			subtasks.map((subtask) => subtask.file)
+		);
+	}
+
+	/**
+	 * Set a task's progress and status from a known set of subtasks. A task with
+	 * no subtasks is left exactly as its owner set it.
+	 */
+	private async writeProgress(file: TFile, subtasks: TFile[]): Promise<ParentProgress | null> {
+		if (this.writing.has(file.path)) return null;
+
+		const completed = subtasks.filter((subtask) => this.isCompleted(subtask)).length;
+		const summary = summariseSubtasks(completed, subtasks.length, this.statuses());
+		if (!summary) return null;
+
+		// Rewriting the same values would bounce straight back as another
+		// metadata change, so stop here when nothing moved.
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+		if (frontmatter.progress === summary.progress && frontmatter.status === summary.status) {
+			return summary;
+		}
+
+		this.writing.add(file.path);
+		try {
+			const timestamp = new Date();
+			await this.app.fileManager.processFrontMatter(file, (fm) => {
+				fm.progress = summary.progress;
+				fm.status = summary.status;
+				fm.updatedAt = timestamp.toISOString();
+				fm.dateModified = formatLocalTimestamp(timestamp);
+			});
+		} catch (error) {
+			console.error(`Task Filler: could not update progress on ${file.path}`, error);
+		} finally {
+			this.writing.delete(file.path);
+		}
+
+		return summary;
+	}
+
+	/** A subtask counts as completed when its own status property says so. */
+	private isCompleted(file: TFile): boolean {
+		const status = readString(this.app.metadataCache.getFileCache(file)?.frontmatter?.status);
+		return status !== null && status === this.settings.completedStatus.trim();
+	}
+
+	private statuses(): StatusVocabulary {
+		return {
+			notStarted: this.settings.notStartedStatus,
+			inProgress: this.settings.inProgressStatus,
+			completed: this.settings.completedStatus,
+		};
 	}
 
 	/** Point the parent's frontmatter and checklist at the subtasks that now exist. */
@@ -220,9 +357,9 @@ export default class TaskFillerPlugin extends Plugin {
 	private collectSubtasks(
 		parent: TFile,
 		frontmatter: Record<string, unknown>,
-		content: string
+		content: string,
+		index: TaskIndex
 	): ExistingSubtask[] {
-		const index = this.indexTasks();
 		const found = new Map<string, ExistingSubtask>();
 
 		const add = (file: TFile | null, linkTarget?: string) => {
@@ -301,7 +438,12 @@ export default class TaskFillerPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const saved = (await this.loadData()) ?? {};
+		// 0.2.0 had a single "subtaskStatus"; it is now the not-started status.
+		if (typeof saved.subtaskStatus === "string" && saved.notStartedStatus === undefined) {
+			saved.notStartedStatus = saved.subtaskStatus;
+		}
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
 	}
 
 	async saveSettings(): Promise<void> {
