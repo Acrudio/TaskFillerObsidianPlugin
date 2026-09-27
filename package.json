@@ -1,6 +1,6 @@
 {
 	"name": "task-filler",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"description": "Split a task that spans several days into one dated subtask per day, and keep the parent's progress and status in step as they are completed.",
 	"main": "main.js",
 	"private": true,
