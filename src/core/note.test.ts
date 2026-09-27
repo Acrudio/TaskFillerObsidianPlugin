@@ -20,7 +20,6 @@ const NOTE: SubtaskNote = {
 	status: "notStarted",
 	priority: "medium",
 	start: "2026-09-07",
-	due: "2026-09-07",
 	tags: [],
 	timeEstimate: 60,
 	createdAt: "2026-09-08T00:59:46.222Z",
@@ -52,7 +51,6 @@ type: task
 status: notStarted
 priority: medium
 start: 2026-09-07
-due: 2026-09-07
 progress: 0
 assignees: []
 tags: []
@@ -70,10 +68,11 @@ Project: [[Homework|Homework]]
 });
 
 test("omits the optional properties that were not supplied", () => {
-	const rendered = renderSubtaskNote({ ...NOTE, start: null, timeEstimate: null, body: [] });
-	assert.doesNotMatch(rendered, /^start:/m);
+	const rendered = renderSubtaskNote({ ...NOTE, timeEstimate: null, body: [] });
+	assert.doesNotMatch(rendered, /^due:/m);
+	assert.doesNotMatch(rendered, /^scheduled:/m);
 	assert.doesNotMatch(rendered, /^timeEstimate:/m);
-	assert.match(rendered, /^due: 2026-09-07$/m);
+	assert.match(rendered, /^start: 2026-09-07$/m);
 });
 
 test("writes inherited tags as a YAML list", () => {

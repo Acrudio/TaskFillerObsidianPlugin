@@ -12,8 +12,6 @@ export interface TaskFillerSettings {
 	titleTemplate: string;
 	/** Vault folder for new subtasks. Empty means alongside the parent note. */
 	subtaskFolder: string;
-	/** Give each subtask a start date as well as a due date. */
-	setStartOnSubtasks: boolean;
 	/** Copy the parent's tags onto each subtask. */
 	inheritTags: boolean;
 	/** Status for a task with no subtask completed yet, and for new subtasks. */
@@ -36,7 +34,6 @@ export const DEFAULT_SETTINGS: TaskFillerSettings = {
 	timeEstimateProperty: "timeEstimate",
 	titleTemplate: "{{title}} (Day {{day}}/{{total}})",
 	subtaskFolder: "",
-	setStartOnSubtasks: true,
 	inheritTags: true,
 	notStartedStatus: "notStarted",
 	inProgressStatus: "inProgress",
@@ -110,16 +107,6 @@ export class TaskFillerSettingTab extends PluginSettingTab {
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.confirmBeforeReplacing).onChange(async (value) => {
 					this.plugin.settings.confirmBeforeReplacing = value;
-					await this.plugin.saveSettings();
-				})
-			);
-
-		new Setting(this.containerEl)
-			.setName("Set a start date")
-			.setDesc("Give each subtask a start date equal to its due date, so it spans a single day.")
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.setStartOnSubtasks).onChange(async (value) => {
-					this.plugin.settings.setStartOnSubtasks = value;
 					await this.plugin.saveSettings();
 				})
 			);

@@ -210,10 +210,7 @@ export default class TaskFillerPlugin extends Plugin {
 							title: subtask.title,
 							status: this.settings.notStartedStatus,
 							priority: readString(frontmatter.priority) ?? "medium",
-							start: this.settings.setStartOnSubtasks
-								? formatPlainDate(subtask.date)
-								: null,
-							due: formatPlainDate(subtask.date),
+							start: formatPlainDate(subtask.date),
 							tags: this.settings.inheritTags ? readStringList(frontmatter.tags) : [],
 							timeEstimate: subtask.timeEstimate,
 							createdAt: subtask.createdAt,

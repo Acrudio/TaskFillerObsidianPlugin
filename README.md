@@ -19,9 +19,11 @@ BRAT will keep the plugin up to date as new releases are published. These steps 
 
 Run **Split task into daily subtasks** while a task note is open. The plugin reads the task's `start` and `due` dates, works out how many days the task spans, and creates one subtask note per day.
 
+Each generated subtask gets only a `start` date; no due date is set.
+
 Given a parent task with `start: 2026-09-07`, `due: 2026-09-09` and `timeEstimate: 180`, it creates:
 
-| Note | `start` / `due` | `timeEstimate` |
+| Note | `start` | `timeEstimate` |
 | --- | --- | --- |
 | 🔨 Manufacturing HW 1 (Day 1/3) | 2026-09-07 | 60 |
 | 🔨 Manufacturing HW 1 (Day 2/3) | 2026-09-08 | 60 |
@@ -70,7 +72,6 @@ If a parent ever looks out of date — you deleted a subtask outside the plugin,
 | Confirm before replacing | on | Ask before moving a previous run's subtasks to trash. |
 | Track subtask completion | on | Keep a parent's `progress` and `status` in step with its subtasks. |
 | Not started / In progress / Completed | `notStarted` / `inProgress` / `completed` | The three status values. "Not started" is also the status given to new subtasks. |
-| Set a start date | on | Give each subtask a `start` equal to its `due`, so it spans one day. |
 | Inherit tags | on | Copy the parent's tags onto each subtask. |
 | Maximum subtasks | 60 | Refuse to split a longer span, as a guard against a mistyped date. |
 | Start date / Due date / Time estimate | `start` / `due` / `timeEstimate` | Which frontmatter properties to read. Change these if you use Tasknotes' `scheduled`, or any other naming. |

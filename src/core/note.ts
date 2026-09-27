@@ -23,9 +23,7 @@ export interface SubtaskNote {
 	title: string;
 	status: string;
 	priority: string;
-	/** `YYYY-MM-DD`, or null to omit the start property. */
-	start: string | null;
-	due: string;
+	start: string;
 	tags: string[];
 	timeEstimate: number | null;
 	/** ISO timestamp, matching the one encoded in `id`. */
@@ -47,8 +45,7 @@ export function renderSubtaskNote(note: SubtaskNote): string {
 	lines.push("type: task");
 	lines.push(`status: ${yamlScalar(note.status)}`);
 	lines.push(`priority: ${yamlScalar(note.priority)}`);
-	if (note.start) lines.push(`start: ${note.start}`);
-	lines.push(`due: ${note.due}`);
+	lines.push(`start: ${note.start}`);
 	lines.push("progress: 0");
 	lines.push("assignees: []");
 
