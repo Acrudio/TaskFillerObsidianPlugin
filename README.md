@@ -45,6 +45,12 @@ Subtasks are found through both the parent's `subtaskIds` and the links in its `
 
 By default you are asked to confirm, with the notes to be removed listed. Turn **Confirm before replacing** off in settings once you trust it.
 
+### Copying assignees
+
+Open the parent task and run **Task Filler: Copy assignees to subtasks** from the command palette. This replaces the `assignees` list on every direct subtask with the parent's list, including subtasks that have children of their own. It finds subtasks through both `subtaskIds` and the `## Subtasks` checklist and updates each note once. It does not recurse into nested subtasks.
+
+An empty or missing parent `assignees` list clears the subtasks' assignments. Assignees must be a YAML list of strings (including quoted wiki links); malformed values are reported without changing any subtasks. A notice reports the number updated and any failed writes.
+
 ### Progress and status
 
 Once a task has subtasks, Task Filler keeps its `progress` and `status` in step with them, updating the parent as you complete each day:

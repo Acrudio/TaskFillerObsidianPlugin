@@ -7,6 +7,7 @@ import {
 	normalizePath,
 } from "obsidian";
 import { formatLocalTimestamp, formatPlainDate } from "./core/dates";
+import { copyAssignees, readAssignees } from "./core/assignees";
 import { buildPlan, type SubtaskPlan } from "./core/plan";
 import {
 	summariseSubtasks,
@@ -74,6 +75,13 @@ export default class TaskFillerPlugin extends Plugin {
 			name: "Refresh progress from subtasks",
 			checkCallback: (checking: boolean) =>
 				this.onActiveTask(checking, (file) => this.refreshProgress(file)),
+		});
+
+		this.addCommand({
+			id: "copy-assignees-to-subtasks",
+			name: "Copy assignees to subtasks",
+			checkCallback: (checking: boolean) =>
+				this.onActiveTask(checking, (file) => this.copyTaskAssignees(file)),
 		});
 
 		this.addRibbonIcon("calendar-range", "Split task into daily subtasks", () => {
@@ -235,6 +243,38 @@ export default class TaskFillerPlugin extends Plugin {
 		new Notice(
 			summarize({ created: created.length, replaced, kept: kept.length + blocked, failed })
 		);
+	}
+
+	private async copyTaskAssignees(file: TFile): Promise<void> {
+		try {
+			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
+			const assignees = readAssignees(frontmatter.assignees);
+			const content = await this.app.vault.read(file);
+			const subtasks = this.collectSubtasks(file, frontmatter, content, this.indexTasks());
+			if (subtasks.length === 0) {
+				new Notice("Task Filler: this note has no subtasks to update.");
+				return;
+			}
+			const result = await copyAssignees(
+				subtasks,
+				assignees,
+				async (subtask, assignments) => {
+					await this.app.fileManager.processFrontMatter(subtask.file, (fm) => {
+						const timestamp = new Date();
+						fm.assignees = assignments;
+						fm.updatedAt = timestamp.toISOString();
+						fm.dateModified = formatLocalTimestamp(timestamp);
+					});
+				},
+				(subtask, error) => console.error(`Task Filler: could not copy assignees to ${subtask.file.path}`, error)
+			);
+			new Notice(`Task Filler: copied assignees to ${describe(result.updated, "subtask")}.${
+				result.failed > 0 ? ` ${result.failed} failed — see the console.` : ""
+			}`);
+		} catch (error) {
+			console.error("Task Filler: could not copy assignees.", error);
+			new Notice(`Task Filler: ${error instanceof Error ? error.message : "Could not copy assignees."}`);
+		}
 	}
 
 	/** Recount one task's subtasks on demand, and say what it now reads as. */
